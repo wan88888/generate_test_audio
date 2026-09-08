@@ -1,0 +1,285 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+批量生成英文测试音频（Mac）
+依赖：
+    pip install edge-tts
+
+运行：
+    python3 generate_test_audio.py
+
+输出：
+    terrorism_financial_test_audio/
+        T01_terrorism_attack_plan.mp3
+        ...
+        T17_risk_segment_40_60s.mp3
+        test_audio_manifest.csv
+
+说明：
+1. 默认使用 Edge TTS 英语女声 en-US-AriaNeural。
+2. T12~T17 是时序专项用例。TTS 的实际语速会因环境变化，
+   因此脚本同时提供 WAV/MP3 生成后的时长检查。
+3. 如果需要“严格 20s/40s/60s 边界”，建议生成后再根据实际音频时长
+   微调文本或插入静音。脚本不会假装保证 TTS 的自然语速恰好落在指定秒数。
+"""
+
+import asyncio
+import csv
+import sys
+from pathlib import Path
+
+try:
+    import edge_tts
+except ImportError:
+    print("缺少 edge-tts，请先执行：")
+    print("pip3 install edge-tts")
+    sys.exit(1)
+
+
+OUTPUT_DIR = Path(__file__).resolve().parent / "terrorism_financial_test_audio"
+VOICE = "en-US-AriaNeural"
+RATE = "+0%"
+VOLUME = "+0%"
+
+
+TEST_CASES = [
+    {
+        "id": "T01",
+        "filename": "T01_terrorism_attack_plan.mp3",
+        "category": "Terrorism",
+        "expected": "Risk",
+        "risk_window": "0-60s",
+        "text": """Hello, listen carefully. We are planning an attack in the city tomorrow morning. We have selected a crowded public place, and several people will be involved. Everything has already been prepared. Do not contact the police, and do not tell anyone about our plan."""
+    },
+    {
+        "id": "T02",
+        "filename": "T02_terrorism_threat.mp3",
+        "category": "Terrorism",
+        "expected": "Risk",
+        "risk_window": "0-60s",
+        "text": """You better listen to me. I know where you live, and I will shoot you. If you call the police, I will come after you. This is not a joke. You should be afraid. I know your daily routine, and you cannot hide from me."""
+    },
+    {
+        "id": "T03",
+        "filename": "T03_terrorism_news_discussion.mp3",
+        "category": "Terrorism false-positive",
+        "expected": "Normal",
+        "risk_window": "None",
+        "text": """I watched a documentary about a terrorist attack yesterday. The news talked about how the attackers planned everything. It was a terrible event, and many people were affected. I hope nothing like that ever happens again."""
+    },
+    {
+        "id": "T04",
+        "filename": "T04_terrorism_history_discussion.mp3",
+        "category": "Terrorism false-positive",
+        "expected": "Normal",
+        "risk_window": "None",
+        "text": """Do you remember the terrorist attack that happened years ago? We were discussing the history of that event in class. The documentary explained how governments responded afterward and what security measures were introduced to prevent similar events."""
+    },
+    {
+        "id": "T05",
+        "filename": "T05_financial_bank_verification_code.mp3",
+        "category": "Financial fraud",
+        "expected": "Risk",
+        "risk_window": "0-60s",
+        "text": """Hello, this is the security department of your bank. We detected suspicious activity on your account. To prevent your account from being frozen, I need you to tell me the verification code that you just received on your phone. Please read the code to me right now."""
+    },
+    {
+        "id": "T06",
+        "filename": "T06_financial_transfer_account_freeze.mp3",
+        "category": "Financial fraud",
+        "expected": "Risk",
+        "risk_window": "0-60s",
+        "text": """Your account has been flagged for suspicious transactions. You need to transfer five thousand dollars to this secure account immediately. Do not hang up the phone. If you don't complete the transfer within ten minutes, your account will be permanently frozen."""
+    },
+    {
+        "id": "T07",
+        "filename": "T07_financial_police_impersonation.mp3",
+        "category": "Financial fraud",
+        "expected": "Risk",
+        "risk_window": "0-60s",
+        "text": """This is an officer from the financial crimes department. Your bank account is connected to a money laundering investigation. You need to transfer all your money to a government protection account. Do not tell your family or anyone else about this investigation."""
+    },
+    {
+        "id": "T08",
+        "filename": "T08_financial_fake_investment.mp3",
+        "category": "Financial fraud",
+        "expected": "Risk",
+        "risk_window": "0-60s",
+        "text": """I can help you make a guaranteed return on your investment. If you transfer ten thousand dollars today, our system will double your money within one week. This opportunity is only available today, so you need to make the payment immediately. You don't want to miss this chance."""
+    },
+    {
+        "id": "T09",
+        "filename": "T09_normal_bank_service.mp3",
+        "category": "Normal financial conversation",
+        "expected": "Normal",
+        "risk_window": "None",
+        "text": """Hello, I would like to check my bank balance. I made a transfer yesterday and I want to confirm whether the money has arrived. Could you please help me check the transaction and tell me when the payment was received?"""
+    },
+    {
+        "id": "T10",
+        "filename": "T10_normal_anti_fraud_discussion.mp3",
+        "category": "Financial fraud false-positive",
+        "expected": "Normal",
+        "risk_window": "None",
+        "text": """My mother almost got scammed yesterday. Someone called her pretending to be a bank employee and asked for her verification code. Luckily, she did not give them any information. I told her that real banks would never ask customers to share sensitive codes over the phone."""
+    },
+    {
+        "id": "T11",
+        "filename": "T11_mixed_terrorism_financial_fraud.mp3",
+        "category": "Terrorism + financial fraud",
+        "expected": "Risk",
+        "risk_window": "0-60s",
+        "text": """Listen carefully. We are planning an attack, and we need money to support the operation. You need to transfer fifty thousand dollars to this account today. If you refuse, there will be consequences. Do not contact the police, and do not tell anyone about this conversation."""
+    },
+    {
+        "id": "T12",
+        "filename": "T12_risk_40_60s.mp3",
+        "category": "Timing + financial fraud",
+        "expected": "Risk",
+        "risk_window": "40-60s",
+        "text": """Hello, I'm calling to talk to you about your account. I wanted to make sure everything is okay. We noticed some unusual activity recently, but there is no need to worry right now.
+
+Let me explain what happened. There was a suspicious transaction on your account yesterday. We need to verify some information before we can complete our security review.
+
+You need to transfer the money to this account immediately. If you don't, your account may be frozen and you could lose access to your funds. Please make the transfer now."""
+    },
+    {
+        "id": "T13",
+        "filename": "T13_risk_after_60s.mp3",
+        "category": "Timing boundary",
+        "expected": "Normal",
+        "risk_window": ">60s",
+        "text": """Hello, I'm calling to discuss your account. I wanted to review some recent transactions with you. Everything seems normal at the moment.
+
+Let me explain the recent activity. There were several transactions last week, but they appear to match your normal account history. We don't see anything unusual right now.
+
+Everything looks fine so far. I just wanted to make sure that you were aware of these transactions. There doesn't appear to be any security problem with your account.
+
+Actually, there is one problem. You need to transfer ten thousand dollars to this account immediately. If you don't do it today, your account will be frozen. Please make the transfer right now."""
+    },
+    {
+        "id": "T14",
+        "filename": "T14_risk_segment_20s.mp3",
+        "category": "20s segmentation",
+        "expected": "Risk",
+        "risk_window": "40-60s",
+        "text": """Hello, I'm calling about your account. There is nothing unusual at the moment, and I just want to review your recent activity with you.
+
+However, we detected a suspicious transaction. You need to verify your identity immediately so that we can complete the security check.
+
+Please give me the verification code that you received on your phone. If you don't provide it, your account may be frozen."""
+    },
+    {
+        "id": "T15",
+        "filename": "T15_risk_cross_segment_boundary.mp3",
+        "category": "20s boundary",
+        "expected": "Risk",
+        "risk_window": "20-60s",
+        "text": """Hello, this is a security call regarding your bank account. We noticed something unusual and need to complete a quick verification.
+
+To protect your account, we need you to provide the verification code that was sent to your phone. This code is required to confirm your identity.
+
+Once we receive the code, we can complete the transfer and remove the security restriction from your account. Please read the code to me now."""
+    },
+    {
+        "id": "T16",
+        "filename": "T16_risk_segment_0_20s.mp3",
+        "category": "20s segmentation",
+        "expected": "Risk",
+        "risk_window": "0-20s",
+        "text": """This is an urgent security call. Your account has been compromised, and you must transfer your money to this protected account immediately. Do not contact anyone else.
+
+After the transfer is completed, our security team will review the transaction and make sure your account is safe.
+
+Please stay on the line while we complete the security procedure. We will let you know when everything has been resolved."""
+    },
+    {
+        "id": "T17",
+        "filename": "T17_risk_segment_40_60s.mp3",
+        "category": "20s segmentation",
+        "expected": "Risk",
+        "risk_window": "40-60s",
+        "text": """Hello, I'm calling about your account. I wanted to review your recent transactions with you. Everything looks normal so far.
+
+There were several payments recently, but they don't appear to be unusual. We just need to complete one final security check before we finish.
+
+For the final step, please transfer five thousand dollars to this account immediately. If you don't, your account will be frozen. Do not tell anyone about this request."""
+    },
+]
+
+
+async def generate_one(item):
+    output = OUTPUT_DIR / item["filename"]
+
+    communicate = edge_tts.Communicate(
+        text=item["text"],
+        voice=VOICE,
+        rate=RATE,
+        volume=VOLUME,
+    )
+
+    await communicate.save(str(output))
+    return output
+
+
+async def main():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    print("=" * 60)
+    print("开始批量生成测试音频")
+    print(f"Voice : {VOICE}")
+    print(f"Output: {OUTPUT_DIR}")
+    print("=" * 60)
+
+    results = []
+
+    for index, item in enumerate(TEST_CASES, start=1):
+        print(f"[{index:02d}/{len(TEST_CASES)}] {item['id']} -> {item['filename']}")
+
+        try:
+            output = await generate_one(item)
+            print(f"       OK: {output}")
+            results.append({
+                "ID": item["id"],
+                "Filename": item["filename"],
+                "Category": item["category"],
+                "Expected": item["expected"],
+                "RiskWindow": item["risk_window"],
+            })
+        except Exception as e:
+            print(f"       ERROR: {e}")
+            results.append({
+                "ID": item["id"],
+                "Filename": item["filename"],
+                "Category": item["category"],
+                "Expected": item["expected"],
+                "RiskWindow": item["risk_window"],
+            })
+
+    manifest = OUTPUT_DIR / "test_audio_manifest.csv"
+
+    with manifest.open("w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "ID",
+                "Filename",
+                "Category",
+                "Expected",
+                "RiskWindow",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(results)
+
+    print()
+    print("=" * 60)
+    print("生成完成")
+    print(f"音频目录: {OUTPUT_DIR}")
+    print(f"测试清单: {manifest}")
+    print("=" * 60)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

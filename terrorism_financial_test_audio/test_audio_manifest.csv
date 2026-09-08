@@ -1,0 +1,18 @@
+﻿ID,Filename,Category,Expected,RiskWindow
+T01,T01_terrorism_attack_plan.mp3,Terrorism,Risk,0-60s
+T02,T02_terrorism_threat.mp3,Terrorism,Risk,0-60s
+T03,T03_terrorism_news_discussion.mp3,Terrorism false-positive,Normal,None
+T04,T04_terrorism_history_discussion.mp3,Terrorism false-positive,Normal,None
+T05,T05_financial_bank_verification_code.mp3,Financial fraud,Risk,0-60s
+T06,T06_financial_transfer_account_freeze.mp3,Financial fraud,Risk,0-60s
+T07,T07_financial_police_impersonation.mp3,Financial fraud,Risk,0-60s
+T08,T08_financial_fake_investment.mp3,Financial fraud,Risk,0-60s
+T09,T09_normal_bank_service.mp3,Normal financial conversation,Normal,None
+T10,T10_normal_anti_fraud_discussion.mp3,Financial fraud false-positive,Normal,None
+T11,T11_mixed_terrorism_financial_fraud.mp3,Terrorism + financial fraud,Risk,0-60s
+T12,T12_risk_40_60s.mp3,Timing + financial fraud,Risk,40-60s
+T13,T13_risk_after_60s.mp3,Timing boundary,Normal,>60s
+T14,T14_risk_segment_20s.mp3,20s segmentation,Risk,40-60s
+T15,T15_risk_cross_segment_boundary.mp3,20s boundary,Risk,20-60s
+T16,T16_risk_segment_0_20s.mp3,20s segmentation,Risk,0-20s
+T17,T17_risk_segment_40_60s.mp3,20s segmentation,Risk,40-60s
