@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>测试音频生成</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="page">
+    <header>
+      <p class="eyebrow">Edge TTS</p>
+      <h1>测试音频生成</h1>
+      <p class="lede">粘贴文本即可合成 MP3。也可从已有用例填入文案后再改。</p>
+    </header>
+
+    <section class="panel">
+      <label for="preset">已有用例（可选）</label>
+      <select id="preset">
+        <option value="">不使用预设，直接粘贴文本</option>
+      </select>
+      <dl id="preset-meta" class="meta hidden">
+        <div>
+          <dt>类别</dt>
+          <dd id="meta-category"></dd>
+        </div>
+        <div>
+          <dt>期望</dt>
+          <dd id="meta-expected"></dd>
+        </div>
+        <div>
+          <dt>风险窗口</dt>
+          <dd id="meta-window"></dd>
+        </div>
+      </dl>
+
+      <label for="text">朗读文本</label>
+      <textarea id="text" rows="14" placeholder="把要转成语音的内容粘贴到这里…"></textarea>
+      <p class="hint"><span id="count">0</span> / 8000 字符</p>
+
+      <div class="grid">
+        <div>
+          <label for="voice">音色</label>
+          <select id="voice"></select>
+        </div>
+        <div>
+          <label for="rate">语速</label>
+          <select id="rate">
+            <option value="-20%">较慢</option>
+            <option value="-10%">略慢</option>
+            <option value="+0%" selected>正常</option>
+            <option value="+10%">略快</option>
+            <option value="+20%">较快</option>
+          </select>
+        </div>
+        <div>
+          <label for="filename">文件名</label>
+          <input id="filename" type="text" value="test_audio.mp3" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="generate" type="button">生成音频</button>
+        <p id="status" class="status" role="status"></p>
+      </div>
+    </section>
+
+    <section class="panel result hidden" id="result">
+      <label>试听 / 下载</label>
+      <p id="duration" class="duration"></p>
+      <audio id="player" controls></audio>
+      <a id="download" class="download" download="test_audio.mp3">下载 MP3</a>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
