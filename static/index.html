@@ -15,6 +15,65 @@
     </header>
 
     <section class="panel">
+      <p class="eyebrow">AI case generator</p>
+      <h2>AI 生成测试文案</h2>
+      <p class="lede">选择已配置的模型和测试目标，生成后可自动合成 MP3；密钥始终只保存在本机服务端。</p>
+
+      <div class="grid ai-grid">
+        <div>
+          <label for="ai-model">生成模型</label>
+          <select id="ai-model" disabled></select>
+        </div>
+        <div>
+          <label for="ai-category">风险类型</label>
+          <select id="ai-category" disabled></select>
+        </div>
+        <div>
+          <label for="ai-language">生成语言</label>
+          <select id="ai-language">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div>
+          <label for="ai-expected">检测预期</label>
+          <select id="ai-expected">
+            <option value="Risk">应触发 Risk</option>
+            <option value="Normal">Normal 误报对照</option>
+          </select>
+        </div>
+        <div>
+          <label for="ai-risk-window">风险窗口</label>
+          <select id="ai-risk-window">
+            <option value="0-20s">0–20 秒</option>
+            <option value="20-40s">20–40 秒</option>
+            <option value="40-60s">40–60 秒</option>
+            <option value="0-60s">0–60 秒</option>
+            <option value="&gt;60s">60 秒后</option>
+            <option value="n/a">无风险窗口</option>
+          </select>
+        </div>
+        <div>
+          <label for="ai-duration">目标时长（秒）</label>
+          <input id="ai-duration" type="number" min="5" max="120" value="30" />
+        </div>
+      </div>
+
+      <label for="ai-instructions">补充要求（可选）</label>
+      <input id="ai-instructions" type="text" maxlength="1000" placeholder="例如：对话形式、风险在后半段出现、适合 20 秒切分测试" />
+      <label class="checkbox-label" for="ai-auto-synthesize">
+        <input id="ai-auto-synthesize" type="checkbox" checked />
+        生成文案后自动合成音频
+      </label>
+      <div class="actions">
+        <button id="ai-generate" type="button" disabled>AI 生成文案</button>
+        <button id="ai-test-connection" class="secondary" type="button" disabled>测试模型连接</button>
+        <button id="ai-optimize" class="secondary hidden" type="button">按实际时长优化</button>
+        <p id="ai-status" class="status" role="status"></p>
+      </div>
+    </section>
+
+    <section class="panel">
       <label for="preset">已有用例（可选）</label>
       <select id="preset">
         <option value="">不使用预设，直接粘贴文本</option>
@@ -78,6 +137,7 @@
       <p id="duration" class="duration"></p>
       <audio id="player" controls></audio>
       <a id="download" class="download" download="test_audio.mp3">下载 MP3</a>
+      <a id="download-manifest" class="download hidden" download="test_case.json">下载用例记录 JSON</a>
     </section>
   </main>
   <script src="/static/app.js"></script>
