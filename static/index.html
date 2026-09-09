@@ -25,17 +25,25 @@
           <dd id="meta-category"></dd>
         </div>
         <div>
-          <dt>期望</dt>
+          <dt>前 60 秒期望</dt>
           <dd id="meta-expected"></dd>
         </div>
         <div>
           <dt>风险窗口</dt>
           <dd id="meta-window"></dd>
         </div>
+        <div>
+          <dt>录音策略</dt>
+          <dd id="meta-recording"></dd>
+        </div>
+        <div class="meta-note">
+          <dt>说明</dt>
+          <dd id="meta-notes"></dd>
+        </div>
       </dl>
 
       <label for="text">朗读文本</label>
-      <textarea id="text" rows="14" placeholder="把要转成语音的内容粘贴到这里…"></textarea>
+      <textarea id="text" rows="14" maxlength="8000" placeholder="把要转成语音的内容粘贴到这里…"></textarea>
       <p class="hint"><span id="count">0</span> / 8000 字符</p>
 
       <div class="grid">
@@ -60,7 +68,7 @@
       </div>
 
       <div class="actions">
-        <button id="generate" type="button">生成音频</button>
+        <button id="generate" type="button" disabled>生成音频</button>
         <p id="status" class="status" role="status"></p>
       </div>
     </section>

@@ -5,6 +5,8 @@ const presetMetaEl = document.getElementById("preset-meta");
 const metaCategoryEl = document.getElementById("meta-category");
 const metaExpectedEl = document.getElementById("meta-expected");
 const metaWindowEl = document.getElementById("meta-window");
+const metaRecordingEl = document.getElementById("meta-recording");
+const metaNotesEl = document.getElementById("meta-notes");
 const voiceEl = document.getElementById("voice");
 const rateEl = document.getElementById("rate");
 const filenameEl = document.getElementById("filename");
@@ -14,12 +16,15 @@ const resultEl = document.getElementById("result");
 const durationEl = document.getElementById("duration");
 const playerEl = document.getElementById("player");
 const downloadEl = document.getElementById("download");
+const MAX_TEXT_CHARS = 8000;
+const DEFAULT_RATE = "+0%";
 
 let objectUrl = "";
 let presets = [];
 let selectedPresetId = "";
 let loadedText = "";
 let generatedPreset = null;
+let optionsLoaded = false;
 
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
@@ -30,8 +35,41 @@ function updateCount() {
   countEl.textContent = String(textEl.value.length);
 }
 
+function responseFilename(response) {
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const utf8Name = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Name) {
+    try {
+      return decodeURIComponent(utf8Name[1]);
+    } catch {
+      /* Fall back to the normal filename below. */
+    }
+  }
+  const asciiName = disposition.match(/filename="?([^";]+)"?/i);
+  return asciiName ? asciiName[1] : "";
+}
+
+function matchingPresetFor(text) {
+  const preset = presets.find((row) => row.id === selectedPresetId);
+  if (
+    !preset ||
+    text !== preset.text ||
+    voiceEl.value !== preset.voice ||
+    rateEl.value !== DEFAULT_RATE
+  ) {
+    return null;
+  }
+  return preset;
+}
+
+const RECORDING_LABELS = {
+  content_only: "仅内容分类",
+  keep_first_60s: "只保留前 60 秒",
+  record_until_end: "录至通话结束",
+};
+
 function parseRiskWindow(window) {
-  if (!window || window === "None") return { type: "none" };
+  if (!window || window === "None" || window === "n/a") return { type: "none" };
   const after = window.match(/^>(\d+(?:\.\d+)?)s$/);
   if (after) return { type: "after", seconds: Number(after[1]) };
   const range = window.match(/^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)s$/);
@@ -41,30 +79,41 @@ function parseRiskWindow(window) {
   return { type: "unknown", raw: window };
 }
 
-function durationVerdict(seconds, window) {
+function durationVerdict(seconds, preset) {
+  const problems = [];
+  const notes = [];
+  const min = Number(preset.target_duration_s);
+  if (Number.isFinite(min) && min > 0) {
+    if (seconds >= min) {
+      notes.push(`时长达到目标 ≥ ${min}s`);
+    } else {
+      problems.push(`时长不足，目标至少 ${min}s`);
+    }
+  }
+
+  const window = preset.risk_window;
   const parsed = parseRiskWindow(window);
-  if (parsed.type === "none") {
-    return { ok: true, text: "无时序窗口要求" };
-  }
   if (parsed.type === "after") {
-    const ok = seconds > parsed.seconds;
-    return {
-      ok,
-      text: ok
-        ? `已超过 ${parsed.seconds}s，满足 ${window}`
-        : `未超过 ${parsed.seconds}s，后段风险可能还没出现`,
-    };
+    if (seconds > parsed.seconds) {
+      notes.push(`已超过 ${parsed.seconds}s，满足 ${window}`);
+    } else {
+      problems.push(`未超过 ${parsed.seconds}s，后段风险可能还没出现`);
+    }
+  } else if (parsed.type === "range") {
+    if (seconds >= parsed.end) {
+      notes.push(`时长覆盖 ${parsed.start}–${parsed.end}s`);
+    } else {
+      problems.push(`未覆盖到 ${parsed.end}s，窗口 ${window} 可能不完整`);
+    }
+  } else if (parsed.type === "none" && !Number.isFinite(min)) {
+    notes.push("无时序窗口要求");
+  } else if (parsed.type === "unknown") {
+    notes.push(`窗口 ${parsed.raw}`);
   }
-  if (parsed.type === "range") {
-    const ok = seconds >= parsed.end;
-    return {
-      ok,
-      text: ok
-        ? `时长覆盖 ${parsed.start}–${parsed.end}s`
-        : `未覆盖到 ${parsed.end}s，窗口 ${window} 可能不完整`,
-    };
-  }
-  return { ok: true, text: `窗口 ${parsed.raw}` };
+
+  const ok = problems.length === 0;
+  const text = (ok ? notes : problems.concat(notes)).join("；") || "时长已读取";
+  return { ok, text };
 }
 
 function showPresetMeta(item) {
@@ -73,8 +122,14 @@ function showPresetMeta(item) {
     return;
   }
   metaCategoryEl.textContent = item.category;
-  metaExpectedEl.textContent = item.expected;
-  metaWindowEl.textContent = item.risk_window;
+  metaExpectedEl.textContent = `${item.expected}（${item.expected_scope === "first_60s" ? "前 60 秒" : item.expected_scope || "未标注"}）`;
+  const target = Number(item.target_duration_s);
+  metaWindowEl.textContent = Number.isFinite(target)
+    ? `${item.risk_window} · 目标 ≥ ${target}s`
+    : item.risk_window;
+  metaRecordingEl.textContent =
+    RECORDING_LABELS[item.recording_policy] || item.recording_policy || "—";
+  metaNotesEl.textContent = item.notes || "—";
   presetMetaEl.classList.remove("hidden");
 }
 
@@ -83,6 +138,9 @@ function applyPreset(item) {
   loadedText = item.text;
   textEl.value = item.text;
   filenameEl.value = item.filename;
+  if (item.voice && [...voiceEl.options].some((option) => option.value === item.voice)) {
+    voiceEl.value = item.voice;
+  }
   showPresetMeta(item);
   updateCount();
 }
@@ -124,7 +182,7 @@ playerEl.addEventListener("loadedmetadata", () => {
 
   const lines = [`时长 ${seconds.toFixed(1)} 秒`];
   if (generatedPreset) {
-    const verdict = durationVerdict(seconds, generatedPreset.risk_window);
+    const verdict = durationVerdict(seconds, generatedPreset);
     lines.push(
       `${generatedPreset.id} · 期望 ${generatedPreset.expected} · 窗口 ${generatedPreset.risk_window}：${verdict.text}`,
     );
@@ -133,6 +191,10 @@ playerEl.addEventListener("loadedmetadata", () => {
     durationEl.className = "duration";
   }
   durationEl.textContent = lines.join("\n");
+});
+
+window.addEventListener("beforeunload", () => {
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
 });
 
 async function loadOptions() {
@@ -146,9 +208,14 @@ async function loadOptions() {
   const voices = await voiceRes.json();
   presets = await presetRes.json();
 
-  voiceEl.innerHTML = voices
-    .map((voice) => `<option value="${voice.id}">${voice.label}</option>`)
-    .join("");
+  const voiceOptions = document.createDocumentFragment();
+  for (const voice of voices) {
+    const option = document.createElement("option");
+    option.value = voice.id;
+    option.textContent = voice.label;
+    voiceOptions.appendChild(option);
+  }
+  voiceEl.replaceChildren(voiceOptions);
 
   for (const item of presets) {
     const option = document.createElement("option");
@@ -156,23 +223,37 @@ async function loadOptions() {
     option.textContent = `${item.id} · ${item.category} · ${item.expected}`;
     presetEl.appendChild(option);
   }
+
+  optionsLoaded = true;
+  generateEl.disabled = false;
 }
 
 generateEl.addEventListener("click", async () => {
   const text = textEl.value.trim();
+  if (!optionsLoaded) {
+    setStatus("正在加载音色和用例，请稍候", true);
+    return;
+  }
   if (!text) {
     setStatus("请先粘贴文本", true);
+    return;
+  }
+  if (text.length > MAX_TEXT_CHARS) {
+    setStatus(`文本过长，最多 ${MAX_TEXT_CHARS} 个字符`, true);
     return;
   }
 
   generateEl.disabled = true;
   setStatus("正在合成…");
-  generatedPreset = presets.find((row) => row.id === selectedPresetId) || null;
+  generatedPreset = matchingPresetFor(text);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 55_000);
 
   try {
     const response = await fetch("/api/synthesize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         text,
         voice: voiceEl.value,
@@ -197,19 +278,26 @@ generateEl.addEventListener("click", async () => {
     objectUrl = URL.createObjectURL(blob);
     playerEl.src = objectUrl;
     downloadEl.href = objectUrl;
-    downloadEl.download = filenameEl.value.endsWith(".mp3")
-      ? filenameEl.value
-      : `${filenameEl.value}.mp3`;
+    downloadEl.download = responseFilename(response) || "test_audio.mp3";
     durationEl.textContent = "正在读取时长…";
     durationEl.className = "duration";
     resultEl.classList.remove("hidden");
-    setStatus("合成完成，可试听或下载");
+    setStatus(
+      generatedPreset
+        ? "合成完成，可试听或下载"
+        : "合成完成，可试听或下载；自定义文本、音色或语速需人工确认时序。",
+    );
   } catch (error) {
-    setStatus(error.message || "合成失败", true);
+    const message = error.name === "AbortError" ? "合成超时，请缩短文本后重试" : error.message;
+    setStatus(message || "合成失败", true);
   } finally {
+    window.clearTimeout(timeoutId);
     generateEl.disabled = false;
   }
 });
 
-loadOptions().catch(() => setStatus("无法加载音色或用例列表", true));
+loadOptions().catch(() => {
+  generateEl.disabled = true;
+  setStatus("无法加载音色或用例列表，请刷新后重试", true);
+});
 updateCount();
